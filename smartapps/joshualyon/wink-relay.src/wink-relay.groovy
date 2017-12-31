@@ -33,19 +33,26 @@ def getSearchTarget(){
 }
 
 def deviceDiscovery() {
-    log.debug "Running device discovery (page)..."
+    log.debug "╚═══════════════════════════════════════════════════════════════════════════════════════════════════"
+    
     def options = [:]
     def devices = getVerifiedDevices()
     devices.each {
         def value = "Wink Relay ${it.value.ssdpUSN.split(':')[1][-3..-1]}" //it.value.name ?: "Default"
         def key = it.value.mac
         options["${key}"] = value
+        log.debug "║ ★ ${it.value.ssdpUSN} @ ${it.value.networkAddress}:${it.value.deviceAddress} (${it.value.mac})"
     }
-
+    if(devices.size() == 0)
+    	log.debug "║ [no devices are verified]"
+    log.debug "║ Verified devices: "
+    log.debug "║ "
+    
     ssdpSubscribe()
-
     ssdpDiscover()
     verifyDevices()
+    
+	log.debug "╔════PAGE: DEVICE DISCOVERY════════════════════════════════════════════════════════════════════════════"
 
     return dynamicPage(name: "deviceDiscovery", title: "Discovery Started!", nextPage: "", refreshInterval: 5, install: true, uninstall: true) {
         section("Please wait while we discover your Wink Relay Device. Please make sure you have installed the custom STWinkRelay app and have started the app at least once. \r\n\r\nDiscovery can take five minutes or more, so sit back and relax! Select your device below once discovered.") {
@@ -81,12 +88,12 @@ def initialize() {
 }
 
 void ssdpDiscover() {
-    log.debug "Searching for ${searchTarget}"
+    log.debug "║ 2. Searching for ${searchTarget}"
     sendHubCommand(new physicalgraph.device.HubAction("lan discovery ${searchTarget}", physicalgraph.device.Protocol.LAN))
 }
 
 void ssdpSubscribe() {
-
+	log.debug "║ 1. Subscribing to events: ssdpTerm.${searchTarget}"
     subscribe(location, "ssdpTerm.${searchTarget}", ssdpHandler)
 }
 
@@ -102,12 +109,13 @@ Map verifiedDevices() {
 }
 
 void verifyDevices() {
+	log.debug "║ 3. Verifying all devices which are not yet verified..."
     def devices = getDevices().findAll { it?.value?.verified != true }
     devices.each {
         int port = convertHexToInt(it.value.deviceAddress)
         String ip = convertHexToIP(it.value.networkAddress)
         String host = "${ip}:${port}"
-        log.debug "Checking value for ${it.value.mac} at ${host}${it.value.ssdpPath}"
+        log.debug "--☆ Verifying device ${it.value.mac} at ${host}${it.value.ssdpPath}"
         sendHubCommand(new physicalgraph.device.HubAction("""GET ${it.value.ssdpPath} HTTP/1.1\r\nHOST: $host\r\n\r\n""", physicalgraph.device.Protocol.LAN, host, [callback: deviceDescriptionHandler]))
     }
 }
@@ -156,10 +164,15 @@ def ssdpHandler(evt) {
     def parsedEvent = parseLanMessage(description)
     parsedEvent << ["hub":hub]
 
-    log.debug "$parsedEvent"
+	log.debug "---╚═══════════════════════════════════════════════════════════════════════════════════════════════════"
+    //log.debug "---║ RAW PARSED EVENT: $parsedEvent"
 
     def devices = getDevices()
-    log.debug "Devices at start of ssdpHandler: ${devices}"
+    devices.each {
+        def star = it.value.verified ? "★" : "☆";
+    	log.debug "---║ > ${star} ${it.value.ssdpUSN} @ ${it.value.networkAddress}:${it.value.deviceAddress} (${it.value.mac})"
+    }
+    log.debug "---║ Devices at start of ssdpHandler: "
     String ssdpUSN = parsedEvent.ssdpUSN.toString()
     if (devices."${ssdpUSN}") {
         def d = devices."${ssdpUSN}"
@@ -172,20 +185,23 @@ def ssdpHandler(evt) {
             }
         }
     } else {
-        log.debug "Adding ${ssdpUSN} to devices short list"
+        log.debug "---║ ☆ Adding ${ssdpUSN} to devices short list"
         devices << ["${ssdpUSN}": parsedEvent]
     }
+    log.debug "---╔════SSDP HANDLER════════════════════════════════════════════════════════════════════════════════════"
 }
 
 void deviceDescriptionHandler(physicalgraph.device.HubResponse hubResponse) {
+	log.debug "---╚═══════════════════════════════════════════════════════════════════════════════════════════════════"
     def body = hubResponse.xml
     def devices = getDevices()
-    log.debug "Got HTTP response for ${body.device.UDN}"
+    log.debug "---║ Got HTTP response for ${body.device.UDN}"
     def device = devices.find { it?.key?.contains(body?.device?.UDN?.text()) }
     if (device) {
-        log.debug "Found device in our short list: ${body.device.UDN}"
+        log.debug "---║ Found device in our short list: ${body.device.UDN} - marking VERIFIED★"
         device.value << [name: body?.device?.friendlyName?.text(), model:body?.device?.modelName?.text(), serialNumber:body?.device?.serialNumber?.text(), verified: true]
     }
+    log.debug "---╔════DEVICE DESCRIPTION HANDLER═════════════════════════════════════════════════════════════════════════"
 }
 
 private Integer convertHexToInt(hex) {
