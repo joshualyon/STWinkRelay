@@ -48,8 +48,8 @@ def deviceDiscovery() {
     log.debug "║ Verified devices: "
     log.debug "║ "
     
-    //ssdpSubscribe()
-    subscribeNetworkEvents()
+    ssdpSubscribe()
+    //subscribeNetworkEvents()
     ssdpDiscover()
     verifyDevices()
     
@@ -79,8 +79,8 @@ def initialize() {
     unsubscribe()
     unschedule()
 
-    //ssdpSubscribe()
-    subscribeNetworkEvents()
+    ssdpSubscribe()
+    //subscribeNetworkEvents()
 
     if (selectedDevices) {
         addDevices()
