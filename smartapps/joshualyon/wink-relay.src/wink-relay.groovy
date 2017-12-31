@@ -48,7 +48,8 @@ def deviceDiscovery() {
     log.debug "║ Verified devices: "
     log.debug "║ "
     
-    ssdpSubscribe()
+    //ssdpSubscribe()
+    subscribeNetworkEvents()
     ssdpDiscover()
     verifyDevices()
     
@@ -78,7 +79,8 @@ def initialize() {
     unsubscribe()
     unschedule()
 
-    ssdpSubscribe()
+    //ssdpSubscribe()
+    subscribeNetworkEvents()
 
     if (selectedDevices) {
         addDevices()
@@ -92,9 +94,24 @@ void ssdpDiscover() {
     sendHubCommand(new physicalgraph.device.HubAction("lan discovery ${searchTarget}", physicalgraph.device.Protocol.LAN))
 }
 
+
 void ssdpSubscribe() {
 	log.debug "║ 1. Subscribing to events: ssdpTerm.${searchTarget}"
     subscribe(location, "ssdpTerm.${searchTarget}", ssdpHandler)
+}
+
+
+private subscribeNetworkEvents(force=false) {
+	log.debug "║ 1. Subscribing to ALL LOCATION events."
+    if (force) {
+        unsubscribe()
+        state.subscribe = false
+    }
+
+    if(!state.subscribe) {
+        subscribe(location, null, ssdpHandler, [filterEvents:false])
+        state.subscribe = true
+    }
 }
 
 Map verifiedDevices() {
