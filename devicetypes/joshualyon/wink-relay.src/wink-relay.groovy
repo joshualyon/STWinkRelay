@@ -167,11 +167,11 @@ def parse(String description) {
     }
 
     //if both relays are on and the switch isn't currently on, let's raise that value
-    if((device.currentValue("relay1") == "on" || device.currentValue("relay2") == "on") && device.currentValue("switch") == "off"){
+    if((device.currentValue("relay1") == "on" || device.currentValue("relay2") == "on") && device.currentValue("switch") != "on"){
         sendEvent(name: "switch", value: "on")
     }
     //and same in reverse
-    if(device.currentValue("relay1") == "off" && device.currentValue("relay2") == "off" && device.currentValue("switch") == "on"){
+    if(device.currentValue("relay1") == "off" && device.currentValue("relay2") == "off" && device.currentValue("switch") != "off"){
         sendEvent(name: "switch", value: "off")
     }
 }
