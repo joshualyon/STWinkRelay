@@ -83,7 +83,7 @@ metadata {
             state "val", label:'${currentValue}%', icon: "st.Weather.weather12", defaultState: true
         }
         valueTile("proximity", "device.proximity", width: 2, height: 2) {
-            state "val", label:'${currentValue}', defaultState: true
+            state "val", label:'${currentValue}', icon: "st.Entertainment.entertainment15", defaultState: true
         }
 
 
