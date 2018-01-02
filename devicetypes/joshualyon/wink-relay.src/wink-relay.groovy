@@ -31,7 +31,8 @@ metadata {
         //attribute "humidity"
 
         attribute "proximityRaw", "string"
-
+        attribute "proximity", "number"
+        
         attribute "relay1", "enum", ["on", "off"]
         command "relay1On"
         command "relay1Off"
@@ -67,32 +68,21 @@ metadata {
                 attributeState "device.switch", label:'Controls both switches simultaneously', icon: "st.Appliances.appliances17"
             }
         }
-
-        standardTile("relay1", "device.relay1", width: 2, height: 2, decoration: "flat") {
-            state "off", label: 'Top', action: "relay1On",
-                    icon: "st.switches.switch.off", backgroundColor: "#ffffff"
-            state "on", label: 'Top', action: "relay1Off",
-                    icon: "st.switches.switch.on", backgroundColor: "#00a0dc"
-        }
-
-        standardTile("relay2", "device.relay2", width: 2, height: 2, decoration: "flat") {
-            state "off", label: 'Bottom', action: "relay2On",
-                    icon: "st.switches.switch.off", backgroundColor: "#ffffff"
-            state "on", label: 'Bottom', action: "relay2Off",
-                    icon: "st.switches.switch.on", backgroundColor: "#00a0dc"
-        }
+        
+        childDeviceTile("switch1", "switch1", height: 2, width: 2, childTileName: "switch")
+        childDeviceTile("switch2", "switch2", height: 2, width: 2, childTileName: "switch")
 
         standardTile("refresh", "device.refresh", inactiveLabel: false, decoration: "flat", height: 2, width: 2) {
             state "default", action:"refresh.refresh", icon:"st.secondary.refresh"
         }
 
         valueTile("temperature", "device.temperature", width: 2, height: 2) {
-            state "val", label:'${currentValue}', icon: "st.Weather.weather2", defaultState: true
+            state "val", label:'${currentValue}°F', icon: "st.Weather.weather2", defaultState: true
         }
         valueTile("humidity", "device.humidity", width: 2, height: 2) {
-            state "val", label:'${currentValue}', icon: "st.Weather.weather12", defaultState: true
+            state "val", label:'${currentValue}%', icon: "st.Weather.weather12", defaultState: true
         }
-        valueTile("proximity", "device.proximityRaw", width: 2, height: 2) {
+        valueTile("proximity", "device.proximity", width: 2, height: 2) {
             state "val", label:'${currentValue}', defaultState: true
         }
 
@@ -100,8 +90,45 @@ metadata {
         // the "switch" tile will appear in the Things view
         main("switch")
         // the tiles defined below will show in the detail view
-        details(["switch", "relay1", "relay2", "refresh", "temperature", "humidity", "proximity"])
+        details(["switch", "switch1", "switch2", "refresh", "temperature", "humidity", "proximity"])
 
+    }
+}
+
+def installed(){
+	createChildDevices()
+    sendHubCommand( refresh() )
+    //setupEventSubscription() - refresh includes this now
+}
+def update(){
+	if(!childDevices){
+    	createChildDevices()
+    }
+    else if (device.label != state.oldLabel) {
+		childDevices.each {
+			def newLabel = "${device.displayName} (Switch ${getChildId(it.deviceNetworkId)})"
+			it.setLabel(newLabel)
+		}
+		state.oldLabel = device.label
+	}
+    sendHubCommand( refresh() )
+    //setupEventSubscription() - refresh includes this now
+}
+
+def createChildDevices(){
+	for(i in 1..2){
+    	addChildDevice(
+        	"Wink Relay Switch", 
+        	"${device.deviceNetworkId}.switch${i}", 
+            null, 
+            [
+               completedSetup: true, 
+               label: "${device.displayName} (Switch ${i})", 
+               isComponent: true, 
+               componentName: "switch$i", 
+               componentLabel: "Switch $i"
+            ]
+        )   
     }
 }
 
@@ -110,43 +137,50 @@ def parse(String description) {
     log.debug "Parsing '${description}'"
     def msg = parseLanMessage(description)
     log.debug "JSON: ${msg.json}"
-
+    //get the child devices for later use (we'll search through them to find our devices to update)
+    def children = childDevices
+    def switch1 = children.find{it.deviceNetworkId.endsWith("1")}
+	def switch2 = children.find{it.deviceNetworkId.endsWith("2")}
+    
     if(msg?.json?.Relay1){
         log.info "Relay 1: ${msg.json.Relay1}"
-        sendEvent(name: "relay1", value: msg.json.Relay1)
+        if (switch1) { switch1.sendEvent(name: "switch", value: msg.json.Relay1) }
     }
     if(msg?.json?.Relay2){
         log.info "Relay 2: ${msg.json.Relay2}"
-        sendEvent(name: "relay2", value: msg.json.Relay2)
+        if (switch2) { switch2.sendEvent(name: "switch", value: msg.json.Relay2) }
     }
     if(msg?.json?.Temperature){
         if(msg?.json?.isRaw){
             log.info "Temperature (Raw): ${msg.json.Temperature}"
-            def temperature = (msg.json.Temperature.toInteger() / 1000) * 1.8 + 32
+            def temperature = roundValue( (msg.json.Temperature.toInteger() / 1000) * 1.8 + 32 )
             log.info "Temperature: ${temperature}"
             sendEvent(name: "temperature", value: temperature)
         }
         else{
             log.info "Temperature: ${msg.json.Temperature}"
-            sendEvent(name: "temperature", value: msg.json.Temperature)
+            sendEvent(name: "temperature", value: roundValue(msg.json.Temperature))
         }
     }
     if(msg?.json?.Humidity){
         if(msg?.json?.isRaw){
             log.info "Humidity (Raw): ${msg.json.Humidity}"
-            def humidity = msg.json.Humidity.toInteger() / 1000
+            def humidity = roundValue(msg.json.Humidity.toInteger() / 1000)
             log.info "Humidity: ${humidity}"
             sendEvent(name: "humidity", value: humidity)
         }
         else{
             log.info "Humidity: ${msg.json.Humidity}"
-            sendEvent(name: "Humidity", value: msg.json.Humidity)
+            sendEvent(name: "Humidity", value: roundValue(msg.json.Humidity))
         }
     }
     if(msg?.json?.Proximity){
         if(msg?.json?.isRaw){
-            log.info "Proximity: ${msg.json.Proximity}"
+            log.info "Proximity (RAW): ${msg.json.Proximity}"
+            def prox = parseProximity(msg.json.Proximity)
+            log.info "Proximity: ${prox}"
             sendEvent(name: "proximityRaw", value: msg.json.Proximity)
+            sendEvent(name: "proximity", value: prox)
         }
         else{
             log.info "Proximity: ${msg.json.Proximity}"
@@ -167,13 +201,22 @@ def parse(String description) {
     }
 
     //if both relays are on and the switch isn't currently on, let's raise that value
-    if((device.currentValue("relay1") == "on" || device.currentValue("relay2") == "on") && device.currentValue("switch") != "on"){
+    if((switch1.currentValue("switch") == "on" || switch2.currentValue("switch") == "on") && device.currentValue("switch") != "on"){
         sendEvent(name: "switch", value: "on")
     }
     //and same in reverse
-    if(device.currentValue("relay1") == "off" && device.currentValue("relay2") == "off" && device.currentValue("switch") != "off"){
+    if(switch1.currentValue("switch") == "off" && switch2.currentValue("switch") == "off" && device.currentValue("switch") != "off"){
         sendEvent(name: "switch", value: "off")
     }
+}
+
+def roundValue(x){
+	Math.round(x * 10) / 10
+}
+
+def parseProximity(proxRaw){
+	//split on spaces and grab the first value
+    proxRaw.split(" ")[0] as Integer
 }
 
 //for now, we'll just have these turn on both relays
@@ -189,6 +232,30 @@ def off(){
     action << relay1Off()
     action << relay2Off()
     return action
+}
+
+//commands passed up from the child devices
+def relayOn(String dni){
+	switch(getChildId(dni)){
+    	case 1: sendHubCommand( relay1On() ); break;
+        case 2: sendHubCommand( relay2On() ); break;
+    }
+}
+def relayOff(String dni){
+	switch(getChildId(dni)){
+    	case 1: sendHubCommand( relay1Off() ); break;
+        case 2: sendHubCommand( relay2Off() ); break;
+    }
+}
+def relayToggle(String dni){
+	switch(getChildId(dni)){
+    	case 1: sendHubCommand( relay1Toggle() ); break;
+        case 2: sendHubCommand( relay2Toggle() ); break;
+    }
+}
+def getChildId(String dni){
+	//trim off the parent DNI and the .
+    dni.split(".switch")[-1] as Integer
 }
 
 //TODO: change actions to POST commands on the server and here
@@ -266,12 +333,13 @@ def sync(ip, port) {
 }
 
 def httpGET(path) {
-    log.debug "Sending command ${path} to ${hostAddress}"
+	def hostUri = hostAddress
+    log.debug "Sending command ${path} to ${hostUri}"
     def result = new physicalgraph.device.HubAction(
             method: "GET",
             path: path,
             headers: [
-                    HOST: getHostAddress()
+                    HOST: hostUri
             ]
     )
     //log.debug "Request: ${result.requestId}"
