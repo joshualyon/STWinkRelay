@@ -100,14 +100,15 @@ def installed(){
     sendHubCommand( refresh() )
     //setupEventSubscription() - refresh includes this now
 }
-def update(){
+def updated(){
 	if(!childDevices){
     	createChildDevices()
     }
     else if (device.label != state.oldLabel) {
-		childDevices.each {
-			def newLabel = "${device.displayName} (Switch ${getChildId(it.deviceNetworkId)})"
-			it.setLabel(newLabel)
+		childDevices.each { child ->
+        	log.debug "Renaming child: ${child.displayName} using parent name: ${device.displayName}"
+			def newLabel = "${device.displayName} (Switch ${getChildId(child.deviceNetworkId)})"
+			child.setLabel(newLabel)
 		}
 		state.oldLabel = device.label
 	}
