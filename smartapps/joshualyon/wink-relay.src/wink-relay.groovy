@@ -26,6 +26,8 @@ definition(
 
 preferences {
     page(name: "deviceDiscovery", title: "Wink Relay Device Setup", content: "deviceDiscovery")
+    page(name: "manualAdd", title: "Manually Add a Device", content: "manualAdd")
+    page(name: "manualValidation", title: "Validation of manually added device", content: "manualValidation")
 }
 
 def getSearchTarget(){
@@ -54,11 +56,108 @@ def deviceDiscovery() {
     verifyDevices()
     
 	log.debug "╔════PAGE: DEVICE DISCOVERY════════════════════════════════════════════════════════════════════════════"
-
+	
     return dynamicPage(name: "deviceDiscovery", title: "Discovery Started!", nextPage: "", refreshInterval: 5, install: true, uninstall: true) {
         section("Please wait while we discover your Wink Relay Device. Please make sure you have installed the custom STWinkRelay app and have started the app at least once. \r\n\r\nDiscovery can take five minutes or more, so sit back and relax! Select your device below once discovered.") {
             input "selectedDevices", "enum", required: false, title: "Select Devices (${options.size() ?: 0} found)", multiple: true, options: options
+            href(name: "customDevice",
+                 title: "Manually add by IP/host",
+                 required: false,
+                 page: "manualAdd",
+                 description: "Click to continue to manual entry")
         }
+    }
+}
+
+def manualAdd(){
+	state.manualValidationInProgress = false; //reset the manual validation
+    state.manualDevice = [] //clear the existing state for the manual device.
+    
+	//manualDevice = "" //reset to default value
+	return dynamicPage(name: "manualAdd", title: "Manual Addition", nextPage: "manualValidation", install: false, uninstall: false) {
+        section("Wink Relay IP address or host name") {
+            input(name: "manualDevice", type: "text",  required: true, multiple: false, title: "IP / Hostname")
+        }
+    }
+}
+
+def manualValidation(){
+	def canInstall = true //if this is false, the Save button just goes back one back
+    def manualValidationStatus = "Starting validation of ${manualDevice}"
+    
+	//---validate that the IP or hostname is OK---
+    //send a request to the webserver (on port 8080) to get the device.xml
+    if(state.manualValidationInProgress == null || state.manualValidationInProgress == false){
+    	log.debug "SENDING DEVICE.XML REQUEST"
+        def host = manualDevice + ":8080"
+        state.manualValidationInProgress = true
+        log.debug "Sending command to ${host}"
+        sendHubCommand(new physicalgraph.device.HubAction("""GET /device.xml HTTP/1.1\r\nHOST: $host\r\n\r\n""", physicalgraph.device.Protocol.LAN, host, [callback: manualValidationXmlCallback]))
+    }
+    else{
+    	//if the request is in progress, the callback will parse the XML for use in creating the device
+        //log.debug state.manualDevice
+        if(state.manualDevice){
+        	log.debug "We have verified ${manualDevice} manually!"
+            //if we have a manualDevice object created, let's show the user the results and let them install
+            canInstall = true
+            //TODO: test pingback capabilities (can the Wink Relay send events to the hub?)
+            log.debug "Can install: ${canInstall}"
+
+            //then show the results (can we complete the install programatically?)
+            manualValidationStatus = "Successfully validated ${manualDevice}.\r\n\r\nClick save to create the new device!"
+        }
+        else{
+            	log.debug "DEVICE.XML request is in progress, but not completed"
+        }
+    }
+    
+    return dynamicPage(name: "manualValidation", title: "Manual Validation", refreshInterval: 3, nextPage: "", install: canInstall, uninstall: false) {
+        section("") {
+            paragraph(manualValidationStatus)
+        }
+    }
+}
+
+void manualValidationXmlCallback(physicalgraph.device.HubResponse hubResponse) {
+	log.debug "---╚═══════════════════════════════════════════════════════════════════════════════════════════════════"
+    //log.debug hubResponse
+    def body = hubResponse.xml
+    //get the ID and store it in state for final addition at the end
+    int port = convertHexToInt(hubResponse.port)
+    String ip = convertHexToIP(hubResponse.ip)
+    String host = "${ip}:${port}"
+    String mac = hubResponse.mac
+    String udn = body?.device?.UDN
+    String hub = hubResponse.hubId
+    log.debug "---║ ★ ${udn} @ ${ip}:${port} (${mac})"
+    
+    //USN = body.device.UDN uuid:2f9e00f8cbd2b6d8        
+    //ip: ip, port: port,
+    state.manualDevice = [mac: mac, hub: hub, networkAddress: hubResponse?.ip, deviceAddress: hubResponse?.port, ssdpUSN: udn, name: body?.device?.friendlyName?.text(), model:body?.device?.modelName?.text(), serialNumber:body?.device?.serialNumber?.text(), verified: true]
+    log.debug "---╔════MANUAL DEVICE CALLBACK═════════════════════════════════════════════════════════════════════════"
+}
+
+def addManualDevice(){
+	//add the device
+    def device = state.manualDevice
+    def d 
+    if(device){
+        d = getChildDevices()?.find {
+            it.deviceNetworkId == device.mac
+        }
+    }
+    
+    if(!d){
+    	log.debug "Manually creating Wink Relay Device with dni: ${device.mac}"
+        addChildDevice("joshualyon", "Wink Relay", device.mac, device.hub, [
+            "label": device.name ?: "Wink Relay",
+            "data": [
+                "mac": device.mac,
+                "ip": device.networkAddress,
+                "port": device.deviceAddress
+            ]
+        ])
     }
 }
 
@@ -83,10 +182,17 @@ def initialize() {
     //subscribeNetworkEvents()
 
     if (selectedDevices) {
+    	log.debug "Adding selected devices from SSDP discovery..."
         addDevices()
+    }
+    
+    if(state.manualDevice){
+    	log.debug "Adding manually entered devices..."
+    	addManualDevice()
     }
 
     runEvery5Minutes("ssdpDiscover")
+    log.debug "Done with initialize."
 }
 
 void ssdpDiscover() {
