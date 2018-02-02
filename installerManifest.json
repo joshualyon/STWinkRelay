@@ -1,0 +1,42 @@
+{
+    "namespace": "joshualyon",
+    "repoOwner": "joshualyon",
+    "repoName": "STWinkRelay",
+    "repoBranch": "master",
+    "name": "STWinkRelay",
+    "author": "Joshua Lyon",
+    "description": "Super fast LAN integration for the Wink Relay (control and sensor reporting).",
+    "category": "My Apps",
+    "bannerUrl": "https://raw.githubusercontent.com/joshualyon/STWinkRelay/master/images/stwinkrelay_banner.png",
+    "forumUrl": "https://community.smartthings.com/t/alpha-wink-relay-custom-smartthings-integration/111732",
+    "releaseType": "production",
+    "smartApps": {
+        "parent": {
+            "name": "STWinkRelay",
+            "iconUrl": "https://assets.ifttt.com/images/channels/423083547/icons/on_color_large.png",
+            "published": true,
+            "oAuth": false,
+            "version": "0.3.0",
+            "appSettings": {},
+            "appUrl": "smartapps/joshualyon/wink-relay.src/wink-relay.groovy"
+        },
+        "children": []
+    },
+    "deviceHandlers": [{
+            "name": "Wink Relay",
+            "iconUrl": "https://assets.ifttt.com/images/channels/423083547/icons/on_color_large.png",
+            "published": true,
+            "version": "0.3.0",
+            "appUrl": "devicetypes/joshualyon/wink-relay.src",
+            "optional": false
+        },
+        {
+            "name": "Wink Relay (Switch)",
+            "iconUrl": "https://assets.ifttt.com/images/channels/423083547/icons/on_color_large.png",
+            "published": true,
+            "version": "0.3.0",
+            "appUrl": "devicetypes/joshualyon/wink-relay-switch.src",
+            "optional": false
+        }
+    ]
+}
