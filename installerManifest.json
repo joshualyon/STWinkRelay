@@ -13,7 +13,7 @@
     "smartApps": {
         "parent": {
             "name": "STWinkRelay",
-            "iconUrl": "https://assets.ifttt.com/images/channels/423083547/icons/on_color_large.png",
+            "iconUrl": "https://raw.githubusercontent.com/joshualyon/STWinkRelay/master/images/wink_relay_icon.png",
             "published": true,
             "oAuth": false,
             "version": "0.3.0",
@@ -24,7 +24,7 @@
     },
     "deviceHandlers": [{
             "name": "Wink Relay",
-            "iconUrl": "https://assets.ifttt.com/images/channels/423083547/icons/on_color_large.png",
+            "iconUrl": "https://raw.githubusercontent.com/joshualyon/STWinkRelay/master/images/wink_relay_icon.png",
             "published": true,
             "version": "0.3.0",
             "appUrl": "devicetypes/joshualyon/wink-relay.src",
@@ -32,7 +32,7 @@
         },
         {
             "name": "Wink Relay (Switch)",
-            "iconUrl": "https://assets.ifttt.com/images/channels/423083547/icons/on_color_large.png",
+            "iconUrl": "https://raw.githubusercontent.com/joshualyon/STWinkRelay/master/images/wink_relay_icon.png",
             "published": true,
             "version": "0.3.0",
             "appUrl": "devicetypes/joshualyon/wink-relay-switch.src",
