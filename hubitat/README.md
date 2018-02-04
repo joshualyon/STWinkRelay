@@ -1,0 +1,1 @@
+Hubitat variation of the STWinkRelay integration. Requires the associated [STWinkRelay.apk](hhttp://wink.boshdirect.com/updates/files/STWinkRelay_0-2-1a.apk) to be installed and the Wink Relay to be rooted.
