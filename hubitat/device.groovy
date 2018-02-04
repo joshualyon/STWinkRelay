@@ -193,7 +193,7 @@ def retrieveScreenBacklight(){ httpGET("/lcd/backlight") }
 
 def setupEventSubscription(){
     log.debug "Subscribing to events from Wink Relay"
-    def result = new physicalgraph.device.HubAction(
+    def result = new hubitat.device.HubAction(
             method: "POST",
             path: "/subscribe",
             headers: [
@@ -239,7 +239,7 @@ def sync(ip, port) {
 def httpGET(path) {
 	def hostUri = hostAddress
     log.debug "Sending command ${path} to ${hostUri}"
-    def result = new physicalgraph.device.HubAction(
+    def result = new hubitat.device.HubAction(
             method: "GET",
             path: path,
             headers: [
