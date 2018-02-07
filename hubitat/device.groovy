@@ -29,6 +29,8 @@ metadata {
         //attribute "motion" //active/inactive
         capability "Relative Humidity Measurement"
         //attribute "humidity"
+        capability "Pushable Button"
+        //attribute pushed [1, 2] (eg. 1=top, 2=bottom)
 
         attribute "proximityRaw", "string"
         attribute "proximity", "number"
@@ -122,10 +124,12 @@ def parse(String description) {
     if(msg?.json?.BottomButton){
         log.info "Bottom Button: ${msg.json.BottomButton}"
         sendEvent(name: "bottomButton", value: msg.json.BottomButton)
+        sendEvent(name: "pushed", value: 2)
     }
     if(msg?.json?.TopButton){
         log.info "Top Button: ${msg.json.TopButton}"
         sendEvent(name: "topButton", value: msg.json.TopButton)
+        sendEvent(name: "pushed", value: 1)
     }
 
     //if both relays are on and the switch isn't currently on, let's raise that value
@@ -180,7 +184,7 @@ def relay2Off(){
 def relay2Toggle(){} //TODO: implement relay2 toggle
 
 def screenBacklightOn(){ httpGET("/lcd/backlight/on") } //TODO: implement screen backlight control
-def screenBacklightOff(){ httpGET("/lcd/backlight/off") }
+def screenBacklightOff(){ httpGET("/lcd/backlight/off 		") }
 def screenBacklightToggle(){}
 
 //Individual commands for retrieving the status of the Wink Relay over HTTP
