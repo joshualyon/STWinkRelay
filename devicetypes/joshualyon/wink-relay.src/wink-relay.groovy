@@ -276,8 +276,8 @@ def relay2Off(){
 }
 def relay2Toggle(){} //TODO: implement relay2 toggle
 
-def screenBacklightOn(){} //TODO: implement screen backlight control
-def screenBacklightOff(){}
+def screenBacklightOn(){ httpGET("/lcd/backlight/on") }
+def screenBacklightOff(){ httpGET("/lcd/backlight/off") }
 def screenBacklightToggle(){}
 
 //Individual commands for retrieving the status of the Wink Relay over HTTP
