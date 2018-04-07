@@ -60,15 +60,16 @@ def installed(){
     //setupEventSubscription() - refresh includes this now
 }
 def updated(){
+    sendEvent(name:"numberOfButtons", value:2)
     refresh()
     //setupEventSubscription() - refresh includes this now
 }
 
 // parse events into attributes
 def parse(String description) {
-    log.debug "Parsing '${description}'"
+    //log.debug "Parsing '${description}'"
     def msg = parseLanMessage(description)
-    log.debug "JSON: ${msg.json}"
+    //log.debug "JSON: ${msg.json}"
     
     if(msg?.json?.Relay1){
         log.info "Relay 1: ${msg.json.Relay1}"
@@ -124,20 +125,24 @@ def parse(String description) {
     if(msg?.json?.BottomButton){
         log.info "Bottom Button: ${msg.json.BottomButton}"
         sendEvent(name: "bottomButton", value: msg.json.BottomButton)
-        sendEvent(name: "pushed", value: 2)
+        if(msg.json.BottomButton == "on"){
+            sendEvent(name: "pushed", value: 2, isStateChange: true);
+        }
     }
     if(msg?.json?.TopButton){
         log.info "Top Button: ${msg.json.TopButton}"
         sendEvent(name: "topButton", value: msg.json.TopButton)
-        sendEvent(name: "pushed", value: 1)
+        if(msg.json.BottomButton == "on"){
+            sendEvent(name: "pushed", value: 1, isStateChange: true);
+        }
     }
 
     //if both relays are on and the switch isn't currently on, let's raise that value
-    if((switch1.currentValue("switch") == "on" || switch2.currentValue("switch") == "on") && device.currentValue("switch") != "on"){
+    if((device.currentValue("relay1") == "on" || device.currentValue("relay2") == "on") && device.currentValue("switch") != "on"){
         sendEvent(name: "switch", value: "on")
     }
     //and same in reverse
-    if(switch1.currentValue("switch") == "off" && switch2.currentValue("switch") == "off" && device.currentValue("switch") != "off"){
+    if(device.currentValue("relay1") == "off" && device.currentValue("relay2") == "off" && device.currentValue("switch") != "off"){
         sendEvent(name: "switch", value: "off")
     }
 }
@@ -183,8 +188,8 @@ def relay2Off(){
 }
 def relay2Toggle(){} //TODO: implement relay2 toggle
 
-def screenBacklightOn(){ httpGET("/lcd/backlight/on") } //TODO: implement screen backlight control
-def screenBacklightOff(){ httpGET("/lcd/backlight/off 		") }
+def screenBacklightOn(){ httpGET("/lcd/backlight/on") }
+def screenBacklightOff(){ httpGET("/lcd/backlight/off") }
 def screenBacklightToggle(){}
 
 //Individual commands for retrieving the status of the Wink Relay over HTTP
