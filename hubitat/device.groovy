@@ -132,7 +132,7 @@ def parse(String description) {
     if(msg?.json?.TopButton){
         log.info "Top Button: ${msg.json.TopButton}"
         sendEvent(name: "topButton", value: msg.json.TopButton)
-        if(msg.json.BottomButton == "on"){
+        if(msg.json.TopButton == "on"){
             sendEvent(name: "pushed", value: 1, isStateChange: true);
         }
     }
