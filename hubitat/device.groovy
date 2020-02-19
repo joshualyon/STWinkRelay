@@ -3,6 +3,13 @@
  *
  *  Copyright 2017 Joshua Lyon
  *
+ *  Child Device support by @AdamKempenich (Feb 17, 2020)
+ *      - Added child devices for relays and backlight
+ *      - Added logDescriptionText and logDebugText options
+ *      - Added importURL
+ *      - Added option to turn screen on when proximity falls below a value
+ *	- Added option to turn on the above option
+ *      
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
  *
@@ -14,23 +21,15 @@
  *
  */
 metadata {
-    definition (name: "Wink Relay", namespace: "joshualyon", author: "Josh Lyon") {
+    definition (name: "Wink Relay", namespace: "joshualyon", author: "Josh Lyon", importURL: "https://raw.githubusercontent.com/joshualyon/STWinkRelay/master/hubitat/device.groovy") {
         capability "Switch"
-        //attribute "switch" //on/off
-        //command "on"
-        //command "off"
+
         capability "Polling"
-        //command "poll"
         capability "Refresh"
-        //command "refresh"
         capability "Temperature Measurement"
-        //attribute "temperature"
         capability "Motion Sensor"
-        //attribute "motion" //active/inactive
         capability "Relative Humidity Measurement"
-        //attribute "humidity"
         capability "Pushable Button"
-        //attribute pushed [1, 2] (eg. 1=top, 2=bottom)
 
         attribute "proximityRaw", "string"
         attribute "proximity", "number"
@@ -38,24 +37,43 @@ metadata {
         attribute "relay1", "enum", ["on", "off"]
         command "relay1On"
         command "relay1Off"
-        //command "relay1Toggle"
 
         attribute "relay2", "enum", ["on", "off"]
         command "relay2On"
         command "relay2Off"
-        //command "relay2Toggle"
 
         attribute "screenBacklight", "enum", ["on", "off"]
         command "screenBacklightOn"
         command "screenBacklightOff"
-        //command "screenBacklightToggle"
 
         attribute "topButton", "enum", ["on", "off"]
         attribute "bottomButton", "enum", ["on", "off"]
+    } 
+    preferences {
+        
+        input(name:"screenOnProximity", type:"number", title: "Turn on screen when proximity is above...",
+            description: "Lower is more sensitive.", defaultValue: 3900,
+            required: true, displayDuringSetup: true)
+        
+        input(name:"enableProximity", type:"bool", title: "Enable backlight with proximity?",
+              defaultValue: true, required: true, displayDuringSetup: true)
+        
+        input(name:"logDebug", type:"bool", title: "Log debug information?",
+                  description: "Logs raw data for debugging. (Default: Off)", defaultValue: false,
+                  required: true, displayDuringSetup: true)
+
+        input(name:"logDescriptionText", type:"bool", title: "Log descriptionText?",
+                  description: "Logs when things happen. (Default: On)", defaultValue: true,
+                  required: true, displayDuringSetup: true)
     }
 }
 
 def installed(){
+    def networkID = device.deviceNetworkId
+
+    addChildDevice("joshualyon", "Wink Relay Child", "${networkID}-Relay-1", [label: "Relay 1", isComponent: true])
+    addChildDevice("joshualyon", "Wink Relay Child", "${networkID}-Relay-2", [label: "Relay 2", isComponent: true])
+    addChildDevice("joshualyon", "Wink Relay Child", "${networkID}-Backlight", [label: "Backlight", isComponent: true])
     refresh()
     //setupEventSubscription() - refresh includes this now
 }
@@ -67,70 +85,78 @@ def updated(){
 
 // parse events into attributes
 def parse(String description) {
-    //log.debug "Parsing '${description}'"
+    //logDebug "Parsing '${description}'"
     def msg = parseLanMessage(description)
-    //log.debug "JSON: ${msg.json}"
-    
+    //logDebug "JSON: ${msg.json}"
+    def networkID = device.deviceNetworkId
+
+    childRelay1 = getChildDevice("${networkID}-Relay-1")
+    childRelay2 = getChildDevice("${networkID}-Relay-2")
+    childBacklight = getChildDevice("${networkID}-Backlight")
+
     if(msg?.json?.Relay1){
-        log.info "Relay 1: ${msg.json.Relay1}"
-        //if (switch1) { switch1.sendEvent(name: "switch", value: msg.json.Relay1) }
-        sendEvent(name: "relay1", value: msg.json.Relay1)
+        logDescriptionText "Relay 1: ${msg.json.Relay1}"
+        childRelay1.sendEvent(name: "switch", value: msg.json.Relay1)        
     }
     if(msg?.json?.Relay2){
-        log.info "Relay 2: ${msg.json.Relay2}"
-        //if (switch2) { switch2.sendEvent(name: "switch", value: msg.json.Relay2) }
-        sendEvent(name: "relay2", value: msg.json.Relay2)
+        logDescriptionText "Relay 2: ${msg.json.Relay2}"
+        childRelay2.sendEvent(name: "switch", value: msg.json.Relay2)      
     }
     if(msg?.json?.Temperature){
         if(msg?.json?.isRaw){
-            log.info "Temperature (Raw): ${msg.json.Temperature}"
+            logDescriptionText "Temperature (Raw): ${msg.json.Temperature}"
             def temperature = roundValue( (msg.json.Temperature.toInteger() / 1000) * 1.8 + 32 )
-            log.info "Temperature: ${temperature}"
+            logDescriptionText "Temperature: ${temperature}"
             sendEvent(name: "temperature", value: temperature)
         }
         else{
-            log.info "Temperature: ${msg.json.Temperature}"
+            logDescriptionText "Temperature: ${msg.json.Temperature}"
             sendEvent(name: "temperature", value: roundValue(msg.json.Temperature))
         }
     }
     if(msg?.json?.Humidity){
         if(msg?.json?.isRaw){
-            log.info "Humidity (Raw): ${msg.json.Humidity}"
+            logDescriptionText "Humidity (Raw): ${msg.json.Humidity}"
             def humidity = roundValue(msg.json.Humidity.toInteger() / 1000)
-            log.info "Humidity: ${humidity}"
+            logDescriptionText "Humidity: ${humidity}"
             sendEvent(name: "humidity", value: humidity)
         }
         else{
-            log.info "Humidity: ${msg.json.Humidity}"
+            logDescriptionText "Humidity: ${msg.json.Humidity}"
             sendEvent(name: "Humidity", value: roundValue(msg.json.Humidity))
         }
     }
+  
     if(msg?.json?.Proximity){
+        settings.enableProximity ? runInMillis(300, checkProximity) : null
         if(msg?.json?.isRaw){
-            log.info "Proximity (RAW): ${msg.json.Proximity}"
+            logDescriptionText "Proximity (RAW): ${msg.json.Proximity}"
             def prox = parseProximity(msg.json.Proximity)
-            log.info "Proximity: ${prox}"
+            proximity = prox
+            logDescriptionText "Proximity: ${prox}"
             sendEvent(name: "proximityRaw", value: msg.json.Proximity)
             sendEvent(name: "proximity", value: prox)
         }
         else{
-            log.info "Proximity: ${msg.json.Proximity}"
+            logDescriptionText "Proximity: ${msg.json.Proximity}"
+            proximity = msg.json.Proximity
             sendEvent(name: "proximity", value: msg.json.Proximity)
         }
+        
     }
     if(msg?.json?.LCDBacklight){
-        log.info "LCD Backlight: ${msg.json.LCDBacklight}"
-        sendEvent(name: "screenBacklight", value: msg.json.LCDBacklight)
+        logDescriptionText "LCD Backlight: ${msg.json.LCDBacklight}"
+        childBacklight.sendEvent(name: "switch", value: msg.json.LCDBacklight)      
     }
     if(msg?.json?.BottomButton){
-        log.info "Bottom Button: ${msg.json.BottomButton}"
+        logDescriptionText "Bottom Button: ${msg.json.BottomButton}"
         sendEvent(name: "bottomButton", value: msg.json.BottomButton)
         if(msg.json.BottomButton == "on"){
             sendEvent(name: "pushed", value: 2, isStateChange: true);
         }
     }
     if(msg?.json?.TopButton){
-        log.info "Top Button: ${msg.json.TopButton}"
+        logDescriptionText "Top Button: ${msg.json.TopButton}"
         sendEvent(name: "topButton", value: msg.json.TopButton)
         if(msg.json.TopButton == "on"){
             sendEvent(name: "pushed", value: 1, isStateChange: true);
@@ -138,15 +164,22 @@ def parse(String description) {
     }
 
     //if both relays are on and the switch isn't currently on, let's raise that value
-    if((device.currentValue("relay1") == "on" || device.currentValue("relay2") == "on") && device.currentValue("switch") != "on"){
+    if((childRelay1.currentValue("switch") == "on" || childRelay2.currentValue("switch") == "on") && device.currentValue("switch") != "on"){
         sendEvent(name: "switch", value: "on")
     }
     //and same in reverse
-    if(device.currentValue("relay1") == "off" && device.currentValue("relay2") == "off" && device.currentValue("switch") != "off"){
+    if(childRelay1.currentValue("switch") == "off" && childRelay2.currentValue("switch") == "off" && device.currentValue("switch") != "off"){
         sendEvent(name: "switch", value: "off")
     }
+    
+    
 }
 
+def checkProximity(){
+   if(device.currentValue('proximity') >= settings.screenOnProximity){
+      screenBacklightOn()
+   } else{ screenBacklightOff() }
+}
 def roundValue(x){
 	Math.round(x * 10) / 10
 }
@@ -173,24 +206,59 @@ def off(){
 
 //TODO: change actions to POST commands on the server and here
 def relay1On(){
+    def networkID = device.deviceNetworkId
+    childRelay1 = getChildDevice("${networkID}-Relay-1")
+    childRelay1.sendEvent(name: "switch", value: "on")
     httpGET("/relay/top/on")
 }
 def relay1Off(){
+    def networkID = device.deviceNetworkId
+    childRelay1 = getChildDevice("${networkID}-Relay-1")
+    childRelay1.sendEvent(name: "switch", value: "off")
     httpGET("/relay/top/off")
 }
-def relay1Toggle(){} //TODO: implement relay1 toggle
+def relay1Toggle(){
+    def networkID = device.deviceNetworkId
+    childRelay1 = getChildDevice("${networkID}-Relay-1")
+    childRelay1.currentValue("switch") == "on" ? relay1Off() : relay1On()
+}
 
-def relay2On(){
+def relay2On(){   
+    def networkID = device.deviceNetworkId
+    childRelay2 = getChildDevice("${networkID}-Relay-2")
+    childRelay2.sendEvent(name: "switch", value: "on")
     httpGET("/relay/bottom/on")
 }
 def relay2Off(){
+    def networkID = device.deviceNetworkId
+    childRelay2 = getChildDevice("${networkID}-Relay-2")
+    childRelay2.sendEvent(name: "switch", value: "on")    
     httpGET("/relay/bottom/off")
 }
-def relay2Toggle(){} //TODO: implement relay2 toggle
+def relay2Toggle(){
+    def networkID = device.deviceNetworkId
+    childRelay2 = getChildDevice("${networkID}-Relay-2")
+    childRelay1.currentValue("switch") == "on" ? relay2Off() : relay2On()
+}
 
-def screenBacklightOn(){ httpGET("/lcd/backlight/on") }
-def screenBacklightOff(){ httpGET("/lcd/backlight/off") }
-def screenBacklightToggle(){}
+def screenBacklightOn(){ 
+    def networkID = device.deviceNetworkId
+    childBacklight = getChildDevice("${networkID}-Backlight")
+    childBacklight.sendEvent(name: "switch", value: "on")
+    httpGET("/lcd/backlight/on") 
+}
+def screenBacklightOff(){ 
+    def networkID = device.deviceNetworkId
+    childBacklight = getChildDevice("${networkID}-Backlight")
+    childBacklight.sendEvent(name: "switch", value: "off")
+    httpGET("/lcd/backlight/off") 
+}
+def screenBacklightToggle(){
+    def networkID = device.deviceNetworkId
+    childBacklight = getChildDevice("${networkID}-Backlight")
+
+    childBacklight.currentValue("switch") == "on" ? screenBacklightOff() : screenBacklightOn()
+}
 
 //Individual commands for retrieving the status of the Wink Relay over HTTP
 def retrieveRelay1(){ httpGET("/relay/top") }
@@ -201,7 +269,7 @@ def retrieveProximity(){ httpGET("/sensor/proximity/raw") }
 def retrieveScreenBacklight(){ httpGET("/lcd/backlight") }
 
 def setupEventSubscription(){
-    log.debug "Subscribing to events from Wink Relay"
+    logDebug "Subscribing to events from Wink Relay"
     def result = new hubitat.device.HubAction(
             method: "POST",
             path: "/subscribe",
@@ -210,7 +278,7 @@ def setupEventSubscription(){
                     CALLBACK: getCallBackAddress()
             ]
     )
-    //log.debug "Request: ${result.requestId}"
+    //logDebug "Request: ${result.requestId}"
     return result
 }
 
@@ -247,7 +315,7 @@ def sync(ip, port) {
 
 def httpGET(path) {
 	def hostUri = hostAddress
-    log.debug "Sending command ${path} to ${hostUri}"
+    logDebug "Sending command ${path} to ${hostUri}"
     def result = new hubitat.device.HubAction(
             method: "GET",
             path: path,
@@ -255,11 +323,9 @@ def httpGET(path) {
                     HOST: hostUri
             ]
     )
-    //log.debug "Request: ${result.requestId}"
+    //logDebug "Request: ${result.requestId}"
     return result
 }
-
-
 
 
 // gets the address of the Hub
@@ -274,7 +340,7 @@ private getHostAddress() {
 
     if (!ip || !port) {
         def parts = device.deviceNetworkId.split(":")
-        if (parts.length == 2) {
+        if (parts.length == 2) {    
             ip = parts[0]
             port = parts[1]
         } else {
@@ -282,7 +348,7 @@ private getHostAddress() {
         }
     }
 
-    log.debug "Using IP: $ip and port: $port for device: ${device.id}"
+    logDebug "Using IP: $ip and port: $port for device: ${device.id}"
     return convertHexToIP(ip) + ":" + convertHexToInt(port)
 }
 
@@ -292,4 +358,20 @@ private Integer convertHexToInt(hex) {
 
 private String convertHexToIP(hex) {
     return [convertHexToInt(hex[0..1]),convertHexToInt(hex[2..3]),convertHexToInt(hex[4..5]),convertHexToInt(hex[6..7])].join(".")
+}
+
+private logDebug( text ){
+    // If debugging is enabled in settings, pass text to the logs
+    
+    if( settings.logDebug ) { 
+        log.debug "${text}"
+    }
+}
+
+private logDescriptionText( text ){
+    // If description text is enabled, pass it as info to logs
+
+    if( settings.logDescriptionText ) { 
+        log.info "${text}"
+    }
 }
