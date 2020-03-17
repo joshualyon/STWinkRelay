@@ -192,8 +192,9 @@ def parse(String description) {
 
 def checkProximity(){
    if(device.currentValue('proximity') >= settings.screenOnProximity){
-      screenBacklightOn()
-   } else{ screenBacklightOff() }
+        unschedule(scheduledScreenBacklightOff)
+        screenBacklightOn()
+    } else{ runIn(15, screenBacklightOff) }
 }
 def roundValue(x){
 	Math.round(x * 10) / 10
