@@ -30,7 +30,8 @@ metadata {
         capability "Motion Sensor"
         capability "Relative Humidity Measurement"
         capability "Pushable Button"
-
+	capability "Configuration"
+	    
         attribute "proximityRaw", "string"
         attribute "proximity", "number"
         
@@ -71,9 +72,7 @@ metadata {
 def installed(){
     def networkID = device.deviceNetworkId
 
-    addChildDevice("joshualyon", "Wink Relay Child", "${networkID}-Relay-1", [label: "Relay 1", isComponent: true])
-    addChildDevice("joshualyon", "Wink Relay Child", "${networkID}-Relay-2", [label: "Relay 2", isComponent: true])
-    addChildDevice("joshualyon", "Wink Relay Child", "${networkID}-Backlight", [label: "Backlight", isComponent: true])
+    createChildDevices()
     refresh()
     //setupEventSubscription() - refresh includes this now
 }
@@ -81,6 +80,22 @@ def updated(){
     sendEvent(name:"numberOfButtons", value:2)
     refresh()
     //setupEventSubscription() - refresh includes this now
+}
+
+def configure(){
+    createChildDevices()
+}
+
+def createChildDevices(){
+    try{
+       addChildDevice("joshualyon", "Wink Relay Child", "${networkID}-Relay-1", [label: "Relay 1", isComponent: true])
+    } catch(child1Error){ logDebug "Child 1 has already been created" }
+    try{
+        addChildDevice("joshualyon", "Wink Relay Child", "${networkID}-Relay-2", [label: "Relay 2", isComponent: true])
+    } catch(child2Error){ logDebug "Child 2 has already been created" }
+    try{
+        addChildDevice("joshualyon", "Wink Relay Child", "${networkID}-Backlight", [label: "Backlight", isComponent: true])
+    } catch(childBacklightError){ logDebug "Backlight child device has already been created" }
 }
 
 // parse events into attributes
