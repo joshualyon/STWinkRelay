@@ -87,6 +87,9 @@ def configure(){
 }
 
 def createChildDevices(){
+
+    def networkID = device.deviceNetworkId
+	
     try{
        addChildDevice("joshualyon", "Wink Relay Child", "${networkID}-Relay-1", [label: "Relay 1", isComponent: true])
     } catch(child1Error){ logDebug "Child 1 has already been created" }
