@@ -14,7 +14,7 @@
  *
  */
 metadata {
-    definition (name: "Wink Relay", namespace: "joshualyon", author: "Josh Lyon") {
+    definition (name: "Wink Relay", namespace: "joshualyon", author: "Josh Lyon", ocfDeviceType: "oic.d.smartplug", mcdSync: true) {
         capability "Switch"
         //attribute "switch" //on/off
         //command "on"
