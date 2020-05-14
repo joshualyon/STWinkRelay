@@ -3,12 +3,13 @@
  *
  *  Copyright 2017 Joshua Lyon
  *
- *  Child Device support by @AdamKempenich (Feb 17, 2020)
- *      - Added child devices for relays and backlight
- *      - Added logDescriptionText and logDebugText options
- *      - Added importURL
- *      - Added option to turn screen on when proximity falls below a value
- *	- Added option to turn on the above option
+ *  2020-05-14: Moved motion backlight trigger into STWinkRelay app
+ *  2020-02-17: Added child device support and logging preferences (PR by @AdamKempenich)
+ *  2018-11-01: TopButton fix 
+ *  2018-02-06: PushableButton support
+ *  2018-02-03: Initial Hubitat version of STWinkRelay integration
+ *  2018-01-04: Various device handler fixes
+ *  2017-12-31: Initial SmartThings version of STWinkRelay integration
  *      
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -30,7 +31,7 @@ metadata {
         capability "Motion Sensor"
         capability "Relative Humidity Measurement"
         capability "Pushable Button"
-	capability "Configuration"
+        capability "Configuration"
 	    
         attribute "proximityRaw", "string"
         attribute "proximity", "number"
@@ -51,13 +52,6 @@ metadata {
         attribute "bottomButton", "enum", ["on", "off"]
     } 
     preferences {
-        
-        input(name:"screenOnProximity", type:"number", title: "Turn on screen when proximity is above...",
-            description: "Lower is more sensitive.", defaultValue: 3900,
-            required: true, displayDuringSetup: true)
-        
-        input(name:"enableProximity", type:"bool", title: "Enable backlight with proximity?",
-              defaultValue: true, required: true, displayDuringSetup: true)
         
         input(name:"logDebug", type:"bool", title: "Log debug information?",
                   description: "Logs raw data for debugging. (Default: Off)", defaultValue: false,
@@ -146,7 +140,6 @@ def parse(String description) {
     }
   
     if(msg?.json?.Proximity){
-        settings.enableProximity ? runInMillis(300, checkProximity) : null
         if(msg?.json?.isRaw){
             logDescriptionText "Proximity (RAW): ${msg.json.Proximity}"
             def prox = parseProximity(msg.json.Proximity)
@@ -193,12 +186,7 @@ def parse(String description) {
     
 }
 
-def checkProximity(){
-   if(device.currentValue('proximity') >= settings.screenOnProximity){
-        unschedule(scheduledScreenBacklightOff)
-        screenBacklightOn()
-    } else{ runIn(15, screenBacklightOff) }
-}
+
 def roundValue(x){
 	Math.round(x * 10) / 10
 }
