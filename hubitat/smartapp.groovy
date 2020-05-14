@@ -26,6 +26,8 @@ definition(
 
 preferences {
     page(name: "deviceDiscovery", title: "Wink Relay Device Setup", content: "deviceDiscovery")
+    page(name: "confirmInstall", title: "Confirm Installation", content: "confirmInstall")
+    page(name: "selectDevices", title: "Select Devices", content: "selectDevices")
     page(name: "manualAdd", title: "Manually Add a Device", content: "manualAdd")
     page(name: "manualValidation", title: "Validation of manually added device", content: "manualValidation")
 }
@@ -35,7 +37,7 @@ def getSearchTarget(){
 }
 
 def deviceDiscovery() {
-    log.debug "╚═══════════════════════════════════════════════════════════════════════════════════════════════════"
+    log.debug "╚═════════════════════════════"
     
     def options = [:]
     def devices = getVerifiedDevices()
@@ -55,16 +57,72 @@ def deviceDiscovery() {
     ssdpDiscover()
     verifyDevices()
     
-	log.debug "╔════PAGE: DEVICE DISCOVERY════════════════════════════════════════════════════════════════════════════"
+	log.debug "╔════PAGE: DEVICE DISCOVERY═══════"
 	
-    return dynamicPage(name: "deviceDiscovery", title: "Discovery Started!", nextPage: "", refreshInterval: 5, install: true, uninstall: true) {
+    return dynamicPage(name: "deviceDiscovery", title: "Discovery Started!", nextPage: "", refreshInterval: 5, install: false, uninstall: true) {
         section("Please wait while we discover your Wink Relay Device. Please make sure you have installed the custom STWinkRelay app and have started the app at least once. \r\n\r\nDiscovery can take five minutes or more, so sit back and relax! Select your device below once discovered.") {
-            input "selectedDevices", "enum", required: false, title: "Select Devices (${options.size() ?: 0} found)", multiple: true, options: options
+            
+            paragraph "There are ${getVerifiedDevices().size() ?: 0} devices found so far"
+            href(name: "selectDevices", 
+                 title: "Select Devices",
+                 required: false,
+                 page: "selectDevices",
+                 description: "Click to select discovered devices")
             href(name: "customDevice",
                  title: "Manually add by IP/host",
                  required: false,
                  page: "manualAdd",
                  description: "Click to continue to manual entry")
+        }
+    }
+}
+
+def confirmInstall(){
+    
+    def canInstall = selectedDevices?.size() > 0;
+    
+    if(canInstall){
+        def deviceSummary = ""
+        selectedDevices.each { 
+            log.debug  "Wink Relay ${it}\r\n"
+            deviceSummary += "Wink Relay (MAC: ${it})\r\n" 
+        }
+        return dynamicPage(name: "confirmInstall", title: "Confirm Install Options", nextPage: canInstall ? "" : "deviceDiscovery", install: canInstall, uninstall: true){
+            section("The following devices will be installed"){
+                paragraph "${deviceSummary}"
+            }
+        }
+    }
+    
+    //otherwise fall back to this
+    return dynamicPage(name: "confirmInstall", title: "Configuration Error", nextPage: "deviceDiscovery", install: false, uninstall: true){
+        section("Something doesn't look quite right."){
+            paragraph "You'll need to select at least one device."
+            href(name: "selectDevices", 
+                 title: "Back to Select Devices",
+                 required: false,
+                 page: "selectDevices",
+                 description: "Go back to device selection")
+            paragraph "Click 'Remove' to cancel or 'Next' to go back to the discovery page."
+        }
+    }
+}
+
+def selectDevices(){
+    log.debug "Loading Wink Relay select devices page"
+    //setup the device selection options
+    def options = [:]
+    def devices = getVerifiedDevices()
+    devices.each {
+        def value = "Wink Relay ${it.value.ssdpUSN.split(':')[1][-3..-1]}" //it.value.name ?: "Default"
+        def key = it.value.mac
+        options["${key}"] = value
+        log.debug "║ ★ ${it.value.ssdpUSN} @ ${it.value.networkAddress}:${it.value.deviceAddress} (${it.value.mac})"
+    }
+    
+    return dynamicPage(name: "selectDevices", title: "Select Devices", nextPage: "confirmInstall", install: false, uninstall: true){
+        section("Select one or more devices that were discovered on the previous page"){
+            input "selectedDevices", "enum", required: false, title: "Select Devices (${options.size() ?: 0} found)", multiple: true, options: options
         }
     }
 }
@@ -82,15 +140,17 @@ def manualAdd(){
 }
 
 def manualValidation(){
-	def canInstall = true //if this is false, the Save button just goes back one back
+	def canInstall = false //if this is false, the Save button just goes back one back
     def manualValidationStatus = "Starting validation of ${manualDevice}"
     
 	//---validate that the IP or hostname is OK---
     //send a request to the webserver (on port 8080) to get the device.xml
     if(state.manualValidationInProgress == null || state.manualValidationInProgress == false){
-    	log.debug "SENDING DEVICE.XML REQUEST"
+    	manualValidationStatus += "\r\n\r\nSending validation request..."
+        log.debug "SENDING DEVICE.XML REQUEST"
         def host = manualDevice + ":8080"
         state.manualValidationInProgress = true
+        state.manualAttemptCount = 1
         log.debug "Sending command to ${host}"
         sendHubCommand(new hubitat.device.HubAction("""GET /device.xml HTTP/1.1\r\nHOST: $host\r\n\r\n""", hubitat.device.Protocol.LAN, host, [callback: manualValidationXmlCallback]))
     }
@@ -98,6 +158,8 @@ def manualValidation(){
     	//if the request is in progress, the callback will parse the XML for use in creating the device
         //log.debug state.manualDevice
         if(state.manualDevice){
+            state.remove("manualAttemptCount") //don't need to track the count anymore
+            
         	log.debug "We have verified ${manualDevice} manually!"
             //if we have a manualDevice object created, let's show the user the results and let them install
             canInstall = true
@@ -105,10 +167,18 @@ def manualValidation(){
             log.debug "Can install: ${canInstall}"
 
             //then show the results (can we complete the install programatically?)
-            manualValidationStatus = "Successfully validated ${manualDevice}.\r\n\r\nClick save to create the new device!"
+            manualValidationStatus = "Successfully validated ${manualDevice}.\r\n\r\nClick 'Done' to create the new device!"
         }
         else{
-            	log.debug "DEVICE.XML request is in progress, but not completed"
+            state.manualAttemptCount++;
+            if(state.manualAttemptCount > 5){
+                log.warn "The manual validation of ${manualDevice} is taking too long. Try exiting and reopening the STWinkRelay app before trying again"
+                manualValidationStatus = "Validation of ${manualDevice} is taking too long. Verify the device IP address and network connectivity. Then try exiting and reopening the STWinkRelay app before trying again"
+            }
+            else{
+                manualValidationStatus += "\r\n\r\nValidation request is in progress (not completed)."
+            }
+            log.debug "DEVICE.XML request is in progress, but not completed"
         }
     }
     
@@ -120,7 +190,7 @@ def manualValidation(){
 }
 
 void manualValidationXmlCallback(hubitat.device.HubResponse hubResponse) {
-	log.debug "---╚═══════════════════════════════════════════════════════════════════════════════════════════════════"
+	log.debug "---╚═════════════════════════════"
     //log.debug hubResponse
     def body = hubResponse.xml
     //get the ID and store it in state for final addition at the end
@@ -135,7 +205,7 @@ void manualValidationXmlCallback(hubitat.device.HubResponse hubResponse) {
     //USN = body.device.UDN uuid:2f9e00f8cbd2b6d8        
     //ip: ip, port: port,
     state.manualDevice = [mac: mac, hub: hub, networkAddress: hubResponse?.ip, deviceAddress: hubResponse?.port, ssdpUSN: udn, name: body?.device?.friendlyName?.text(), model:body?.device?.modelName?.text(), serialNumber:body?.device?.serialNumber?.text(), verified: true]
-    log.debug "---╔════MANUAL DEVICE CALLBACK═════════════════════════════════════════════════════════════════════════"
+    log.debug "---╔════MANUAL DEVICE CALLBACK═══"
 }
 
 def addManualDevice(){
@@ -159,6 +229,9 @@ def addManualDevice(){
             ]
         ])
     }
+    
+    state.remove("manualDevice")
+    state.remove("manualValidationInProgress")
 }
 
 def installed() {
@@ -287,7 +360,7 @@ def ssdpHandler(evt) {
     def parsedEvent = parseLanMessage(description)
     parsedEvent << ["hub":hub]
 
-	log.debug "---╚═══════════════════════════════════════════════════════════════════════════════════════════════════"
+	log.debug "---╚═════════════════════════════"
     //log.debug "---║ RAW PARSED EVENT: $parsedEvent"
 
     def devices = getDevices()
@@ -311,11 +384,11 @@ def ssdpHandler(evt) {
         log.debug "---║ ☆ Adding ${ssdpUSN} to devices short list"
         devices << ["${ssdpUSN}": parsedEvent]
     }
-    log.debug "---╔════SSDP HANDLER════════════════════════════════════════════════════════════════════════════════════"
+    log.debug "---╔════SSDP HANDLER═════════════"
 }
 
 void deviceDescriptionHandler(hubitat.device.HubResponse hubResponse) {
-	log.debug "---╚═══════════════════════════════════════════════════════════════════════════════════════════════════"
+	log.debug "---╚═════════════════════════════"
     def body = hubResponse.xml
     def devices = getDevices()
     log.debug "---║ Got HTTP response for ${body.device.UDN}"
@@ -324,7 +397,7 @@ void deviceDescriptionHandler(hubitat.device.HubResponse hubResponse) {
         log.debug "---║ Found device in our short list: ${body.device.UDN} - marking VERIFIED★"
         device.value << [name: body?.device?.friendlyName?.text(), model:body?.device?.modelName?.text(), serialNumber:body?.device?.serialNumber?.text(), verified: true]
     }
-    log.debug "---╔════DEVICE DESCRIPTION HANDLER═════════════════════════════════════════════════════════════════════════"
+    log.debug "---╔════DEVICE DESCRIPTION HANDLER════"
 }
 
 private Integer convertHexToInt(hex) {
